@@ -3,6 +3,7 @@ package gol
 import (
 	"strconv"
 	"strings"
+	"uk.ac.bris.cs/gameoflife/util"
 )
 
 type distributorChannels struct {
@@ -11,7 +12,11 @@ type distributorChannels struct {
 	ioIdle     <-chan bool
 	ioFilename chan<- string
 	ioInput    <-chan uint8
+	ioOutput   chan<- uint8
 }
+
+//GOL Logic
+//func worker(p Params, world [][]byte, threadNum int, )
 
 // func to create an empty 2D slice (world)
 func createSlice(p Params, height int) [][]byte {
@@ -45,9 +50,28 @@ func distributor(p Params, c distributorChannels) {
 	turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
+	for t := 0; t < p.Turns; t++ {
 
+		for i := 0; i < p.Threads; i++ { //for each threads make the worker work??
+			//go worker()
+		}
+		turn++ //add turn count
+	}
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
+	var aliveCells []util.Cell
+
+	// go through the 'world' and append cells that are still alive
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			if world[y][x] != 0 {
+				aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
+			}
+		}
+	}
+
+	// put FinalTurnComplete into events channel
+	c.events <- FinalTurnComplete{turn, aliveCells}
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
