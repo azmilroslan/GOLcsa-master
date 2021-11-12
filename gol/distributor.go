@@ -18,9 +18,9 @@ type distributorChannels struct {
 
 //GOL Logic
 func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup) {
-	yBound := (p.Threads + 1) * workerHeight
+	yBound := p.ImageHeight
 
-	for y := thread * workerHeight; y < yBound; y++ {
+	for y := 0; y < yBound; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			xRight, xLeft := x+1, x-1
 			yUp, yDown := y+1, y-1
@@ -92,15 +92,19 @@ func distributor(p Params, c distributorChannels) {
 	turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
-	for t := 0; t < p.Turns; t++ {
+	if p.Turns != 0 {
+		for t := 0; t < p.Turns; t++ {
 
-		var wg = &sync.WaitGroup{}
-		wg.Add(p.Threads)
-		for i := 0; i < p.Threads; i++ { //for each threads make the worker work??
-			go worker(p, world, updateWorld, p.Threads, workerHeight, wg)
+			var wg = &sync.WaitGroup{}
+			wg.Add(p.Threads)
+			for i := 0; i < p.Threads; i++ { //for each threads make the worker work??
+				go worker(p, world, updateWorld, p.Threads, workerHeight, wg)
+			}
+			wg.Wait()
+			turn++ //add turn count
 		}
-		wg.Wait()
-		turn++ //add turn count
+	} else {
+		updateWorld = world
 	}
 
 	//update the 2D world slice
