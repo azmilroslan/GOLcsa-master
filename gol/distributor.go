@@ -101,16 +101,16 @@ func distributor(p Params, c distributorChannels) {
 				go worker(p, world, updateWorld, p.Threads, workerHeight, wg)
 			}
 			wg.Wait()
-			turn++ //add turn count
+			turn++
+			//update the 2D world slice
+			tmp := world
+			world = updateWorld
+			updateWorld = tmp
 		}
 	} else {
 		updateWorld = world
 	}
 
-	//update the 2D world slice
-	tmp := world
-	world = updateWorld
-	updateWorld = tmp
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	var aliveCells []util.Cell
