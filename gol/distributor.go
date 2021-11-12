@@ -17,7 +17,7 @@ type distributorChannels struct {
 }
 
 //GOL Logic
-func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup) {
+func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup, channel chan [][]byte) {
 	yBound := (p.Threads + 1) * workerHeight
 
 	for y := thread * workerHeight; y < yBound; y++ {
@@ -56,6 +56,7 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, grou
 			}
 		}
 	}
+	channel <- emptyWorld
 	group.Done()
 }
 
@@ -75,6 +76,7 @@ func distributor(p Params, c distributorChannels) {
 	world := createSlice(p, p.ImageHeight)
 	updateWorld := createSlice(p, p.ImageHeight)
 	workerHeight := p.ImageHeight / p.Threads // 'split' the work (like in Median Filter lab)
+	workerChannel := make(chan [][]byte)
 
 	//request to read in pgm file
 	c.ioCommand <- ioInput
@@ -97,7 +99,8 @@ func distributor(p Params, c distributorChannels) {
 		var wg = &sync.WaitGroup{}
 		wg.Add(p.Threads)
 		for i := 0; i < p.Threads; i++ { //for each threads make the worker work??
-			go worker(p, world, updateWorld, p.Threads, workerHeight, wg)
+			go worker(p, world, updateWorld, p.Threads, workerHeight, wg, workerChannel)
+			updateWorld = <- workerChannel
 		}
 		wg.Wait()
 		turn++ //add turn count
