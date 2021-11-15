@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -19,6 +20,7 @@ type distributorChannels struct {
 //GOL Logic
 func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, group *sync.WaitGroup) {
 	yBound := (thread + 1) * workerHeight
+
 	if powOfTwo {
 		yBound += extraPixel
 	}
@@ -62,6 +64,18 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPix
 	group.Done() //-1 in the wait group
 }
 
+// func to send AliveCellCount every 2 seconds
+func sendCellCount(c distributorChannels, turnChan chan int, cellChan chan int) {
+	for range time.Tick(2 * time.Second){
+
+		turns := <- turnChan
+		aliveCells := <- cellChan
+
+		c.events <- AliveCellsCount{turns, aliveCells}
+	}
+
+}
+
 // func to create an empty 2D slice (world)
 func createSlice(p Params, height int) [][]byte {
 	newSlice := make([][]byte, height)
@@ -75,6 +89,14 @@ func createSlice(p Params, height int) [][]byte {
 func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
+
+	numAliveCells := 0
+
+	//turnChan := make(chan int)
+	//cellChan := make(chan int)
+
+	//cellChan <- numAliveCells
+
 	world := createSlice(p, p.ImageHeight)
 	updateWorld := createSlice(p, p.ImageHeight)
 	//fmt.Printf("num of thread: %d", p.Threads)
@@ -114,8 +136,14 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	turn := 0
+	//turnChan <- turn
+
+	//go sendCellCount(c, turnChan, cellChan)
 
 	// TODO: Execute all turns of the Game of Life.
+
+	var aliveCells []util.Cell
+
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
 
@@ -129,33 +157,45 @@ func distributor(p Params, c distributorChannels) {
 					go worker(p, world, updateWorld, i, workerHeight, extra, false, wg)
 				}
 			}
-			wg.Wait()
+			wg.Wait() //wait till all goroutines is done (wg == 0)
 			turn++
+			//turnChan <- turn
 			//fmt.Printf("current turn: %d", turn )
 			//update the 2D world slice
 			tmp := world
 			world = updateWorld
 			updateWorld = tmp
+
+			// go through the 'world' and append cells that are still alive
+			for y := 0; y < p.ImageHeight; y++ {
+				for x := 0; x < p.ImageWidth; x++ {
+					if world[y][x] != 0 { //if pixel is not 0 (black/dead), we append
+						aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
+						numAliveCells++
+						//cellChan <- numAliveCells
+					}
+				}
+			}
 		}
 	} else {
 		updateWorld = world
-	}
-
-	// TODO: Report the final state using FinalTurnCompleteEvent.
-
-	var aliveCells []util.Cell
-
-	// go through the 'world' and append cells that are still alive
-	for y := 0; y < p.ImageHeight; y++ {
-		for x := 0; x < p.ImageWidth; x++ {
-			if world[y][x] != 0 { //if pixel is not 0 (black/dead), we append
-				aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
+		// go through the 'world' and append cells that are still alive
+		for y := 0; y < p.ImageHeight; y++ {
+			for x := 0; x < p.ImageWidth; x++ {
+				if world[y][x] != 0 { //if pixel is not 0 (black/dead), we append
+					aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
+					numAliveCells++
+					//cellChan <- numAliveCells
+				}
 			}
 		}
 	}
 
+	// TODO: Report the final state using FinalTurnCompleteEvent.
+
 	// put FinalTurnComplete into events channel
 	c.events <- FinalTurnComplete{turn, aliveCells}
+
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
