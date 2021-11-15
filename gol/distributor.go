@@ -20,6 +20,7 @@ type distributorChannels struct {
 func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup, workerChan chan [][]byte) {
 	yBound := (thread+1) * workerHeight
 
+
 	for y := thread * workerHeight; y < yBound; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			xRight, xLeft := x+1, x-1
@@ -75,6 +76,7 @@ func distributor(p Params, c distributorChannels) {
 	// TODO: Create a 2D slice to store the world.
 	world := createSlice(p, p.ImageHeight)
 	updateWorld := createSlice(p, p.ImageHeight)
+	//fmt.Printf("num of thread: %d", p.Threads)
 	workerHeight := p.ImageHeight / p.Threads // 'split' the work (like in Median Filter lab)
 
 	//request to read in pgm file
@@ -102,6 +104,7 @@ func distributor(p Params, c distributorChannels) {
 
 			var wg = &sync.WaitGroup{}
 			wg.Add(p.Threads)
+
 			for i := 0; i < p.Threads; i++ { //for each threads make channel and worker
 				threadChannels[i] = make(chan [][]byte)
 				go worker(p, world, updateWorld, i, workerHeight, wg, threadChannels[i])
@@ -125,9 +128,7 @@ func distributor(p Params, c distributorChannels) {
 	} else {
 		updateWorld = world
 	}
-
-	//update the 2D world slice
-
+	
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	var aliveCells []util.Cell
