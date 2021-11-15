@@ -17,8 +17,11 @@ type distributorChannels struct {
 }
 
 //GOL Logic
-func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup) {
+func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, group *sync.WaitGroup) {
 	yBound := (thread + 1) * workerHeight
+	if powOfTwo {
+		yBound += extraPixel
+	}
 
 	for y := thread * workerHeight; y < yBound; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
@@ -56,7 +59,7 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, grou
 			}
 		}
 	}
-	group.Done()
+	group.Done() //-1 in the wait group
 }
 
 // func to create an empty 2D slice (world)
@@ -77,12 +80,32 @@ func distributor(p Params, c distributorChannels) {
 	//fmt.Printf("num of thread: %d", p.Threads)
 	workerHeight := p.ImageHeight / p.Threads // 'split' the work (like in Median Filter lab)
 
+	//Since the image HxW are power of two's, it can only be splitted
+	//perfectly if the number of threads are power of two's
+	//this part will check if p.Threads is a power of two
+	var isPowOfTwo bool
+	n := p.Threads
+	if n == 0 {
+		isPowOfTwo = false
+	} else {
+		for n != 0 {
+			if n%2 != 0 {
+				isPowOfTwo = false
+			}
+			n = n / 2
+		}
+		isPowOfTwo = true
+	}
+
+	//if thread is not power of 2, "splitted" image will need "extra" pixels
+	extra := p.ImageHeight % p.Threads
+
 	//request to read in pgm file
 	c.ioCommand <- ioInput
 	//read in the concatenated ImageWidth and ImageHeight and pass it to the channel
 	c.ioFilename <- strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight)}, "x")
 
-	//add values to the 2D slice
+	//add values to the 'world' 2D slice
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			val := <-c.ioInput
@@ -96,10 +119,15 @@ func distributor(p Params, c distributorChannels) {
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
 
-			var wg = &sync.WaitGroup{}
-			wg.Add(p.Threads)
-			for i := 0; i < p.Threads; i++ { //for each threads make the worker work??
-				go worker(p, world, updateWorld, i, workerHeight, wg)
+			//fmt.Printf("p.Threads : %d", p.Threads)
+			var wg = &sync.WaitGroup{}       //used to make sure all goroutines have done executing before resuming
+			wg.Add(p.Threads)                //add number of threads the wait group needs to wait
+			for i := 0; i < p.Threads; i++ { //for each thread make the worker work??
+				if isPowOfTwo {
+					go worker(p, world, updateWorld, i, workerHeight, extra, true, wg)
+				} else {
+					go worker(p, world, updateWorld, i, workerHeight, extra, false, wg)
+				}
 			}
 			wg.Wait()
 			turn++
@@ -128,6 +156,7 @@ func distributor(p Params, c distributorChannels) {
 
 	// put FinalTurnComplete into events channel
 	c.events <- FinalTurnComplete{turn, aliveCells}
+
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
