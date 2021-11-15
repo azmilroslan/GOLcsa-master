@@ -66,15 +66,28 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPix
 }
 
 // func to send AliveCellCount every 2 seconds
-func sendCellCount(c distributorChannels, turnChan chan int, cellChan chan int) {
-	for range time.Tick(2 * time.Second){
+func sendCellCount(c distributorChannels, p Params, world *[][]byte, turns *int, mutexW *sync.Mutex, mutexT *sync.Mutex) { //consumer
 
-		turns := <- turnChan
-		aliveCells := <- cellChan
-
-		c.events <- AliveCellsCount{turns, aliveCells}
+	mutexW.Lock()
+	mutexT.Lock()
+	tempWorld := *world
+	t := *turns
+	numAliveCells := 0
+	tick := time.NewTicker(2 * time.Second)
+	for range tick.C {
+		for y := 0; y < p.ImageHeight; y++ {
+			for x := 0; x < p.ImageWidth; x++ {
+				if tempWorld[y][x] != 0 { //if pixel is not 0 (black/dead), increase numAliveCells
+					numAliveCells++
+				}
+			}
+		}
+		if t != 0 {
+			c.events <- AliveCellsCount{t, numAliveCells}
+		}
 	}
-
+	mutexW.Unlock()
+	mutexT.Unlock()
 }
 
 // func to create an empty 2D slice (world)
@@ -91,10 +104,11 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
 
-	//numAliveCells := 0
+	mutexW := sync.Mutex{}
+	mutexT := sync.Mutex{}
 
-	//turnChan := make(chan int)
-	//cellChan := make(chan int)
+	//turnChan := make(chan int, p.Turns)
+	//cellChan := make(chan int, 5)
 
 	//cellChan <- numAliveCells
 
@@ -128,21 +142,22 @@ func distributor(p Params, c distributorChannels) {
 	c.ioFilename <- strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight)}, "x")
 
 	//add values to the 'world' 2D slice
+	mutexW.Lock()
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			val := <-c.ioInput
 			world[y][x] = val
 		}
 	}
+	mutexW.Unlock()
 
+	mutexT.Lock()
 	turn := 0
-	//turnChan <- turn
-
-	//go sendCellCount(c, turnChan, cellChan)
-
+	mutexT.Unlock()
 
 	// TODO: Execute all turns of the Game of Life.
 
+	go sendCellCount(c, p, &world, &turn, &mutexW, &mutexT)
 
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
@@ -158,19 +173,24 @@ func distributor(p Params, c distributorChannels) {
 				}
 			}
 			wg.Wait() //wait till all goroutines is done (wg == 0)
+			mutexT.Lock()
 			turn++
-
-
+			mutexT.Unlock()
+			//turnChan <- turn
 			//update the 2D world slice
+			mutexW.Lock()
 			tmp := world
 			world = updateWorld
 			updateWorld = tmp
-
+			mutexW.Unlock()
+			//mutex.Unlock()
 		}
 	} else {
+		mutexW.Lock()
 		updateWorld = world
+		mutexW.Unlock()
 	}
-	
+
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	var aliveCells []util.Cell
@@ -188,7 +208,6 @@ func distributor(p Params, c distributorChannels) {
 
 	// put FinalTurnComplete into events channel
 	c.events <- FinalTurnComplete{turn, aliveCells}
-
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
