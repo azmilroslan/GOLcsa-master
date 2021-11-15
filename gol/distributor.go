@@ -18,6 +18,7 @@ type distributorChannels struct {
 }
 
 //GOL Logic
+
 func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, group *sync.WaitGroup) {
 	yBound := (thread + 1) * workerHeight
 
@@ -44,7 +45,7 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPix
 			if yDown < 0 {
 				yDown += p.ImageHeight
 			}
-			count := 0 //count the number of neighbouring living cells
+			count := 0 //count the number of neighbouring live cells
 			count += int(world[yUp][xLeft]) +
 				int(world[yUp][x]) +
 				int(world[yUp][xRight]) +
@@ -90,7 +91,7 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
 
-	numAliveCells := 0
+	//numAliveCells := 0
 
 	//turnChan := make(chan int)
 	//cellChan := make(chan int)
@@ -99,7 +100,6 @@ func distributor(p Params, c distributorChannels) {
 
 	world := createSlice(p, p.ImageHeight)
 	updateWorld := createSlice(p, p.ImageHeight)
-	//fmt.Printf("num of thread: %d", p.Threads)
 	workerHeight := p.ImageHeight / p.Threads // 'split' the work (like in Median Filter lab)
 
 	//Since the image HxW are power of two's, it can only be splitted
@@ -140,9 +140,9 @@ func distributor(p Params, c distributorChannels) {
 
 	//go sendCellCount(c, turnChan, cellChan)
 
+
 	// TODO: Execute all turns of the Game of Life.
 
-	var aliveCells []util.Cell
 
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
@@ -159,34 +159,27 @@ func distributor(p Params, c distributorChannels) {
 			}
 			wg.Wait() //wait till all goroutines is done (wg == 0)
 			turn++
-			//turnChan <- turn
-			//fmt.Printf("current turn: %d", turn )
+
+
 			//update the 2D world slice
 			tmp := world
 			world = updateWorld
 			updateWorld = tmp
 
-			// go through the 'world' and append cells that are still alive
-			for y := 0; y < p.ImageHeight; y++ {
-				for x := 0; x < p.ImageWidth; x++ {
-					if world[y][x] != 0 { //if pixel is not 0 (black/dead), we append
-						aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
-						numAliveCells++
-						//cellChan <- numAliveCells
-					}
-				}
-			}
 		}
 	} else {
 		updateWorld = world
-		// go through the 'world' and append cells that are still alive
-		for y := 0; y < p.ImageHeight; y++ {
-			for x := 0; x < p.ImageWidth; x++ {
-				if world[y][x] != 0 { //if pixel is not 0 (black/dead), we append
-					aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
-					numAliveCells++
-					//cellChan <- numAliveCells
-				}
+	}
+	
+	// TODO: Report the final state using FinalTurnCompleteEvent.
+
+	var aliveCells []util.Cell
+
+	// go through the 'world' and append cells that are still alive
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			if world[y][x] != 0 { //if pixel is not 0 (black/dead), we append
+				aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
 			}
 		}
 	}
