@@ -17,10 +17,10 @@ type distributorChannels struct {
 }
 
 //GOL Logic
-func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup) {
-	yBound := p.ImageHeight
+func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, group *sync.WaitGroup, workerChan chan [][]byte) {
+	yBound := (thread+1) * workerHeight
 
-	for y := 0; y < yBound; y++ {
+	for y := thread * workerHeight; y < yBound; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			xRight, xLeft := x+1, x-1
 			yUp, yDown := y+1, y-1
@@ -39,7 +39,7 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, grou
 			if yDown < 0 {
 				yDown += p.ImageHeight
 			}
-			count := 0 //count the number of neighbouring live cells
+			count := 0 //count the number of neighbouring living cells
 			count += int(world[yUp][xLeft]) +
 				int(world[yUp][x]) +
 				int(world[yUp][xRight]) +
@@ -56,6 +56,7 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight int, grou
 			}
 		}
 	}
+	workerChan <- emptyWorld
 	group.Done()
 }
 
@@ -91,16 +92,34 @@ func distributor(p Params, c distributorChannels) {
 
 	turn := 0
 
+	//THREAD IMPLEMENTATION
+	threadChannels := make([]chan [][]byte, p.Threads)
+	part := make ([] [][]byte,p.Threads)
+
 	// TODO: Execute all turns of the Game of Life.
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
 
 			var wg = &sync.WaitGroup{}
 			wg.Add(p.Threads)
-			for i := 0; i < p.Threads; i++ { //for each threads make the worker work??
-				go worker(p, world, updateWorld, p.Threads, workerHeight, wg)
+			for i := 0; i < p.Threads; i++ { //for each threads make channel and worker
+				threadChannels[i] = make(chan [][]byte)
+				go worker(p, world, updateWorld, i, workerHeight, wg, threadChannels[i])
+				//tmp := world
+				//world = updateWorld
+				//updateWorld = tmp
 			}
 			wg.Wait()
+
+			for i := 0; i < p.Threads; i++ { //reassemble slices from workers
+				part[i] = <- threadChannels[i]
+				for _, bytes := range part[i] {
+					updateWorld = append(updateWorld, bytes)
+				}
+				tmp := world
+				world = updateWorld
+				updateWorld = tmp
+			}
 			turn++ //add turn count
 		}
 	} else {
@@ -108,9 +127,7 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	//update the 2D world slice
-	tmp := world
-	world = updateWorld
-	updateWorld = tmp
+
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	var aliveCells []util.Cell
