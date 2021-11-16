@@ -1,7 +1,6 @@
 package gol
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +19,7 @@ type distributorChannels struct {
 
 //GOL Logic
 
-func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, group *sync.WaitGroup) {
+func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, waitGroup *sync.WaitGroup) {
 	yBound := (thread + 1) * workerHeight
 
 	if powOfTwo {
@@ -63,7 +62,7 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPix
 			}
 		}
 	}
-	group.Done() //-1 in the wait group
+	waitGroup.Done() //-1 in the wait group
 }
 
 // func to count the number of alive cells
@@ -131,6 +130,7 @@ func distributor(p Params, c distributorChannels) {
 	}
 	ticker := time.NewTicker(2 * time.Second) //create a new ticker
 	turn := 0
+	var aliveCells []util.Cell
 
 	// TODO: Execute all turns of the Game of Life.
 
@@ -141,11 +141,11 @@ func distributor(p Params, c distributorChannels) {
 			case <-ticker.C: //this bit will update AliveCellCount every 2 seconds
 				alive := 0
 				alive += countAliveCells(p, world)
-				fmt.Printf("turn3 = %d", turn)
+				//fmt.Printf("turn3 = %d", turn)
 				if turn != 0 {
 					c.events <- AliveCellsCount{turn, alive}
 				} else {
-					break
+					time.Sleep(2 * time.Second)
 				}
 			}
 			//fmt.Printf("p.Threads : %d", p.Threads)
@@ -160,6 +160,7 @@ func distributor(p Params, c distributorChannels) {
 			}
 			wg.Wait() //wait till all goroutines is done (wg == 0)
 			turn = t + 1
+			c.events <- TurnComplete{turn}
 			//update the 2D world slice
 			tmp := world
 			world = updateWorld
@@ -170,8 +171,6 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
-
-	var aliveCells []util.Cell
 
 	// go through the 'world' and append cells that are still alive
 	for y := 0; y < p.ImageHeight; y++ {
