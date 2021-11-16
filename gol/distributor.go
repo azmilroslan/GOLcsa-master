@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,29 +66,17 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPix
 	group.Done() //-1 in the wait group
 }
 
-// func to send AliveCellCount every 2 seconds
-func sendCellCount(c distributorChannels, p Params, world *[][]byte, turns *int, mutexW *sync.Mutex, mutexT *sync.Mutex) { //consumer
-
-	mutexW.Lock()
-	mutexT.Lock()
-	tempWorld := *world
-	t := *turns
-	numAliveCells := 0
-	tick := time.NewTicker(2 * time.Second)
-	for range tick.C {
-		for y := 0; y < p.ImageHeight; y++ {
-			for x := 0; x < p.ImageWidth; x++ {
-				if tempWorld[y][x] != 0 { //if pixel is not 0 (black/dead), increase numAliveCells
-					numAliveCells++
-				}
+// func to count the number of alive cells
+func countAliveCells(p Params, world [][]byte) int {
+	alive := 0
+	for y := 0; y < p.ImageWidth; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			if world[y][x] == 0xFF {
+				alive++
 			}
 		}
-		if t != 0 {
-			c.events <- AliveCellsCount{t, numAliveCells}
-		}
 	}
-	mutexW.Unlock()
-	mutexT.Unlock()
+	return alive
 }
 
 // func to create an empty 2D slice (world)
@@ -103,14 +92,6 @@ func createSlice(p Params, height int) [][]byte {
 func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
-
-	mutexW := sync.Mutex{}
-	mutexT := sync.Mutex{}
-
-	//turnChan := make(chan int, p.Turns)
-	//cellChan := make(chan int, 5)
-
-	//cellChan <- numAliveCells
 
 	world := createSlice(p, p.ImageHeight)
 	updateWorld := createSlice(p, p.ImageHeight)
@@ -142,53 +123,50 @@ func distributor(p Params, c distributorChannels) {
 	c.ioFilename <- strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight)}, "x")
 
 	//add values to the 'world' 2D slice
-	mutexW.Lock()
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			val := <-c.ioInput
 			world[y][x] = val
 		}
 	}
-	mutexW.Unlock()
-
-	mutexT.Lock()
+	ticker := time.NewTicker(2 * time.Second) //create a new ticker
 	turn := 0
-	mutexT.Unlock()
 
 	// TODO: Execute all turns of the Game of Life.
 
-	go sendCellCount(c, p, &world, &turn, &mutexW, &mutexT)
-
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
-
+			//fmt.Printf("turn2 = %d", turn )
+			select {
+			case <-ticker.C: //this bit will update AliveCellCount every 2 seconds
+				alive := 0
+				alive += countAliveCells(p, world)
+				fmt.Printf("turn3 = %d", turn)
+				if turn != 0 {
+					c.events <- AliveCellsCount{turn, alive}
+				} else {
+					break
+				}
+			}
 			//fmt.Printf("p.Threads : %d", p.Threads)
-			var wg = &sync.WaitGroup{}       //used to make sure all goroutines have done executing before resuming
+			var wg = sync.WaitGroup{}        //used to make sure all goroutines have done executing before resuming
 			wg.Add(p.Threads)                //add number of threads the wait group needs to wait
 			for i := 0; i < p.Threads; i++ { //for each thread make the worker work??
 				if isPowOfTwo {
-					go worker(p, world, updateWorld, i, workerHeight, extra, true, wg)
+					go worker(p, world, updateWorld, i, workerHeight, extra, true, &wg)
 				} else {
-					go worker(p, world, updateWorld, i, workerHeight, extra, false, wg)
+					go worker(p, world, updateWorld, i, workerHeight, extra, false, &wg)
 				}
 			}
 			wg.Wait() //wait till all goroutines is done (wg == 0)
-			mutexT.Lock()
-			turn++
-			mutexT.Unlock()
-			//turnChan <- turn
+			turn = t + 1
 			//update the 2D world slice
-			mutexW.Lock()
 			tmp := world
 			world = updateWorld
 			updateWorld = tmp
-			mutexW.Unlock()
-			//mutex.Unlock()
 		}
 	} else {
-		mutexW.Lock()
 		updateWorld = world
-		mutexW.Unlock()
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
