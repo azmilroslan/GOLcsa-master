@@ -22,7 +22,7 @@ type distributorChannels struct {
 func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, waitGroup *sync.WaitGroup) {
 	yBound := (thread + 1) * workerHeight
 
-	if powOfTwo {
+	if powOfTwo { //if not splitted perfectly, add 'extra' pixel
 		yBound += extraPixel
 	}
 
@@ -169,6 +169,17 @@ func distributor(p Params, c distributorChannels) {
 		}
 	} else {
 		updateWorld = world
+	}
+
+	//after all turn complete, output world as pgm file
+	if turn == p.Turns {
+		c.ioCommand <- ioOutput
+		c.ioFilename <- strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight), strconv.Itoa(turn)}, "x")
+		for y := range world { //send world via output channel byte by byte
+			for x := range world[y] {
+				c.ioOutput <- world[y][x]
+			}
+		}
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
