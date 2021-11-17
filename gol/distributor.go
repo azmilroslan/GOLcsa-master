@@ -145,8 +145,9 @@ func distributor(p Params, c distributorChannels) {
 				if turn != 0 {
 					c.events <- AliveCellsCount{turn, alive}
 				} else {
-					time.Sleep(2 * time.Second)
+					break
 				}
+			default:
 			}
 			//fmt.Printf("p.Threads : %d", p.Threads)
 			var wg = sync.WaitGroup{}        //used to make sure all goroutines have done executing before resuming
