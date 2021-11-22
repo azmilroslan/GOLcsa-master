@@ -171,7 +171,7 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 					outputFileToPGM(p, c, world, turn)
 					return
 				} else if k == 'p' {
-					fmt.Println(turn)
+					fmt.Printf("Current turn : %d \n", turn)
 					for {
 						kp := <-keyChan
 						if kp == 'p' {
