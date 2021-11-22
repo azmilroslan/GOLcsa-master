@@ -19,8 +19,6 @@ type distributorChannels struct {
 }
 
 //GOL Logic
-
-
 func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, turn int, waitGroup *sync.WaitGroup) {
 
 	yBound := (thread + 1) * workerHeight
@@ -112,13 +110,11 @@ func createSlice(p Params, height int) [][]byte {
 	return newSlice
 }
 
-
 //helper function to det. thread dimensions
 //Since the image HxW are power of two's, it can only be split
 //perfectly if the number of threads are power of two's
 //this part will check if p.Threads is a power of two
 func isPowOfTwo(n int) bool {
-
 	if n == 0 {
 		return false
 	} else {
@@ -132,7 +128,6 @@ func isPowOfTwo(n int) bool {
 	}
 }
 
-
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 
@@ -141,13 +136,10 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 	world := createSlice(p, p.ImageHeight)
 	updateWorld := createSlice(p, p.ImageHeight)
 	workerHeight := p.ImageHeight / p.Threads // 'split' the work (like in Median Filter lab)
-	powOfTwo := isPowOfTwo(p.Threads)
 	extra := p.ImageHeight % p.Threads
 	//Since the image HxW are power of two's, it can only be splitted
 	//perfectly if the number of threads are power of two's
 	//this part will check if p.Threads is a power of two
-
-
 
 	//request to read in pgm file
 	c.ioCommand <- ioInput
@@ -204,11 +196,7 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 			var wg = sync.WaitGroup{}        //used to make sure all goroutines have done executing before resuming
 			wg.Add(p.Threads)                //add number of threads the wait group needs to wait
 			for i := 0; i < p.Threads; i++ { //for each thread make the worker work??
-				if powOfTwo {
-					go worker(p, c, world, updateWorld, i, workerHeight,  extra, turn, &wg)
-				} else {
-					go worker(p, c, world, updateWorld, i, workerHeight,  extra, turn, &wg)
-				}
+				go worker(p, c, world, updateWorld, i, workerHeight, extra, turn, &wg)
 			}
 
 			wg.Wait() //wait till all goroutines is done (wg == 0)
