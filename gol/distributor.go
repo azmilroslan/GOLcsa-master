@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +20,7 @@ type distributorChannels struct {
 
 //GOL Logic
 
-func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, waitGroup *sync.WaitGroup) {
+func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread, workerHeight, extraPixel int, powOfTwo bool, turn int, waitGroup *sync.WaitGroup) {
 	yBound := (thread + 1) * workerHeight
 
 	if powOfTwo { //if not splitted perfectly, add 'extra' pixel
@@ -55,10 +56,20 @@ func worker(p Params, world, emptyWorld [][]byte, thread, workerHeight, extraPix
 				int(world[yDown][x]) +
 				int(world[yDown][xRight])
 			count /= 255
-			if (world[y][x] == 0xFF && count == 2) || (world[y][x] == 0xFF && count == 3) || (count == 3) {
+			if (world[y][x] == 0xFF && count == 2) || (world[y][x] == 0xFF && count == 3) {
+				emptyWorld[y][x] = 0xFF
+				c.events <- CellFlipped{
+					CompletedTurns: turn,
+					Cell:           util.Cell{X: x, Y: y},
+				}
+			} else if count == 3 {
 				emptyWorld[y][x] = 0xFF
 			} else {
 				emptyWorld[y][x] = 0
+				c.events <- CellFlipped{
+					CompletedTurns: turn,
+					Cell:           util.Cell{X: x, Y: y},
+				}
 			}
 		}
 	}
@@ -78,6 +89,18 @@ func countAliveCells(p Params, world [][]byte) int {
 	return alive
 }
 
+//func to output file to a pgm file
+func outputFileToPGM(p Params, c distributorChannels, world [][]byte, turn int) {
+	c.ioCommand <- ioOutput
+	c.ioFilename <- strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight), strconv.Itoa(turn)}, "x")
+	for y := range world { //send world via output channel byte by byte
+		for x := range world[y] {
+			c.ioOutput <- world[y][x]
+		}
+	}
+	c.events <- ImageOutputComplete{turn, strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight), strconv.Itoa(turn)}, "x")}
+}
+
 // func to create an empty 2D slice (world)
 func createSlice(p Params, height int) [][]byte {
 	newSlice := make([][]byte, height)
@@ -88,7 +111,7 @@ func createSlice(p Params, height int) [][]byte {
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
-func distributor(p Params, c distributorChannels) {
+func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 
 	// TODO: Create a 2D slice to store the world.
 
@@ -137,7 +160,25 @@ func distributor(p Params, c distributorChannels) {
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
 			//fmt.Printf("turn2 = %d", turn )
+
 			select {
+			case k := <-keyChan:
+				if k == 's' {
+					outputFileToPGM(p, c, world, turn)
+				} else if k == 'q' {
+					outputFileToPGM(p, c, world, turn)
+					return
+				} else if k == 'p' {
+					fmt.Println(turn)
+					for {
+						kp := <-keyChan
+						if kp == 'p' {
+							fmt.Println("Continuing....")
+							break
+						}
+					}
+				}
+
 			case <-ticker.C: //this bit will update AliveCellCount every 2 seconds
 				alive := 0
 				alive += countAliveCells(p, world)
@@ -154,9 +195,9 @@ func distributor(p Params, c distributorChannels) {
 			wg.Add(p.Threads)                //add number of threads the wait group needs to wait
 			for i := 0; i < p.Threads; i++ { //for each thread make the worker work??
 				if isPowOfTwo {
-					go worker(p, world, updateWorld, i, workerHeight, extra, true, &wg)
+					go worker(p, c, world, updateWorld, i, workerHeight, extra, true, turn, &wg)
 				} else {
-					go worker(p, world, updateWorld, i, workerHeight, extra, false, &wg)
+					go worker(p, c, world, updateWorld, i, workerHeight, extra, false, turn, &wg)
 				}
 			}
 			wg.Wait() //wait till all goroutines is done (wg == 0)
@@ -173,13 +214,7 @@ func distributor(p Params, c distributorChannels) {
 
 	//after all turn complete, output world as pgm file
 	if turn == p.Turns {
-		c.ioCommand <- ioOutput
-		c.ioFilename <- strings.Join([]string{strconv.Itoa(p.ImageWidth), strconv.Itoa(p.ImageHeight), strconv.Itoa(turn)}, "x")
-		for y := range world { //send world via output channel byte by byte
-			for x := range world[y] {
-				c.ioOutput <- world[y][x]
-			}
-		}
+		outputFileToPGM(p, c, world, turn)
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
