@@ -64,12 +64,13 @@ func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread,
 				}
 			} else if count == 3 {
 				emptyWorld[y][x] = 0xFF
+
 			} else {
 				emptyWorld[y][x] = 0
-				c.events <- CellFlipped{
+				/*c.events <- CellFlipped{
 					CompletedTurns: turn,
 					Cell:           util.Cell{X: x, Y: y},
-				}
+				}*/
 			}
 		}
 	}
@@ -164,7 +165,7 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 			//fmt.Printf("turn2 = %d", turn )
 
 			select {
-			case k := <-keyChan:
+			case k := <-keyChan: //this bit will take en the key presses and do what it's supposed to do
 				if k == 's' {
 					outputFileToPGM(p, c, world, turn)
 				} else if k == 'q' {
