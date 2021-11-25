@@ -11,6 +11,57 @@ import (
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
+/*func BenchmarkTestGol(b *testing.B) {
+	//disables all program output apart from benchmark results
+	//os.Stdout = nil
+
+	tests := []gol.Params{
+		{ImageWidth: 16, ImageHeight: 16},
+		{ImageWidth: 64, ImageHeight: 64},
+		{ImageWidth: 512, ImageHeight: 512},
+	}
+	for _, p := range tests {
+		for _, turns := range []int{0, 1, 100} {
+			p.Turns = turns
+
+			//run sub-benchmarks for all threads
+			for threads := 1; threads <= 16; threads*=2 {
+				p.Threads = threads
+				testName := fmt.Sprintf("%d_workers", p.Threads)
+				b.Run(testName, func(b *testing.B) {
+					events := make(chan gol.Event)
+					for i:=0; i < b.N; i++ {
+						gol.Run(p, events, nil)
+					}
+				})
+			}
+		}
+	}
+} */
+
+
+//simpler Benchmark
+func BenchmarkTestGol(b *testing.B) {
+	//disables all program output apart from benchmark results
+	//os.Stdout = nil
+	p := gol.Params{
+		Turns: 1,
+		ImageWidth: 16,
+		ImageHeight: 16,
+	}
+	//run sub-benchmarks for all threads
+	for threads := 1; threads <= 16; threads*=2 {
+		p.Threads = threads
+		testName := fmt.Sprintf("%d_workers", p.Threads)
+		b.Run(testName, func(b *testing.B) {
+			events := make(chan gol.Event)
+			for i:=0; i < b.N; i++ {
+				gol.Run(p, events, nil)
+			}
+		})
+	}
+}
+
 // TestGol tests 16x16, 64x64 and 512x512 images on 0, 1 and 100 turns using 1-16 worker threads.
 func TestGol(t *testing.T) {
 	tests := []gol.Params{
