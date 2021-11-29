@@ -21,8 +21,8 @@ import (
 		{ImageWidth: 512, ImageHeight: 512},
 	}
 	for _, p := range tests {
-		for _, turns := range []int{0, 1, 100} {
-			p.Turns = turns
+
+			p.Turns = 500
 
 			//run sub-benchmarks for all threads
 			for threads := 1; threads <= 16; threads*=2 {
@@ -31,17 +31,20 @@ import (
 				b.Run(testName, func(b *testing.B) {
 					events := make(chan gol.Event)
 					for i:=0; i < b.N; i++ {
-						gol.Run(p, events, nil)
+						go gol.Run(p, events, nil)
+					}
+					for range events {
+
 					}
 				})
 			}
-		}
-	}
-} */
 
+	}
+}
+*/
 
 //simpler Benchmark
-func BenchmarkTestGol(b *testing.B) {
+/*func BenchmarkTestGol(b *testing.B) {
 	//disables all program output apart from benchmark results
 	//os.Stdout = nil
 	p := gol.Params{
@@ -60,7 +63,7 @@ func BenchmarkTestGol(b *testing.B) {
 			}
 		})
 	}
-}
+}*/
 
 // TestGol tests 16x16, 64x64 and 512x512 images on 0, 1 and 100 turns using 1-16 worker threads.
 func TestGol(t *testing.T) {
