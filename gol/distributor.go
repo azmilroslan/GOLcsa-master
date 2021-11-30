@@ -19,11 +19,12 @@ type distributorChannels struct {
 }
 
 //GOL Logic
-func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread, workerHeight, turn int, waitGroup *sync.WaitGroup) {
+func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread, workerHeight, turn int, aliveCells *[]util.Cell, waitGroup *sync.WaitGroup) {
 
 	yBound := (thread + 1) * workerHeight
 	extra := p.ImageHeight % p.Threads
 
+	//fmt.Printf("worker thread %d \n", thread + 1)
 
 	if !isPowOfTwo(p.Threads) {
 		yBound += extra
@@ -58,24 +59,36 @@ func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread,
 				int(world[yDown][x]) +
 				int(world[yDown][xRight])
 			count /= 255
+
 			if (world[y][x] == 0xFF && count == 2) || (world[y][x] == 0xFF && count == 3) {
 				emptyWorld[y][x] = 0xFF
 				c.events <- CellFlipped{
 					CompletedTurns: turn,
 					Cell:           util.Cell{X: x, Y: y},
 				}
-			} else if count == 3 {
-				emptyWorld[y][x] = 0xFF
-
-			} else {
+			} else if world[y][x] == 0xFF && count < 2 {
 				emptyWorld[y][x] = 0
-				/*c.events <- CellFlipped{
+				c.events <- CellFlipped{
 					CompletedTurns: turn,
 					Cell:           util.Cell{X: x, Y: y},
-				}*/
+				}
+			} else if world[y][x] == 0xFF && count > 3 {
+				emptyWorld[y][x] = 0
+				c.events <- CellFlipped{
+					CompletedTurns: turn,
+					Cell:           util.Cell{X: x, Y: y},
+				}
+			} else if count == 3 {
+				emptyWorld[y][x] = 0xFF
+			} else {
+				emptyWorld[y][x] = 0
 			}
 		}
 	}
+
+	//time.Sleep(5 * time.Millisecond)
+	//wl14928
+
 	waitGroup.Done() //-1 in the wait group
 }
 
@@ -122,7 +135,7 @@ func isPowOfTwo(n int) bool {
 		return false
 	} else {
 		for n != 0 {
-			if n%2 != 0 {
+			if n%2 != 1 {
 				return false
 			}
 			n = n / 2
@@ -137,7 +150,6 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 	// TODO: Create a 2D slice to store the world.
 
 	world := createSlice(p, p.ImageHeight)
-	updateWorld := createSlice(p, p.ImageHeight)
 	workerHeight := p.ImageHeight / p.Threads // 'split' the work (like in Median Filter lab)
 
 	//request to read in pgm file
@@ -149,19 +161,20 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			val := <-c.ioInput
-			world[y][x] = val
+			if val != 0 {
+				world[y][x] = val
+			}
 		}
 	}
 
 	turn := 0
 	ticker := time.NewTicker(2 * time.Second) //create a new ticker
 	var aliveCells []util.Cell
-
+	updateWorld := createSlice(p, p.ImageHeight)
 	// TODO: Execute all turns of the Game of Life.
 
 	if p.Turns != 0 {
 		for t := 0; t < p.Turns; t++ {
-			//fmt.Printf("turn2 = %d", turn )
 
 			//SDL logic
 			select {
@@ -192,25 +205,29 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 					break
 				}
 			default:
+				break
 			}
 
 			//BASELINE GOL LOGIC
-			var wg = sync.WaitGroup{}        //used to make sure all goroutines have done executing before resuming
-			wg.Add(p.Threads)                //add number of threads the wait group needs to wait
+			var wg = sync.WaitGroup{} //used to make sure all goroutines have done executing before resuming
+			start := time.Now()
 			for i := 0; i < p.Threads; i++ { //for each thread make the worker work??
-				go worker(p, c, world, updateWorld, i, workerHeight, turn, &wg)
+				wg.Add(1) //add number of threads the wait group needs to wait
+				go worker(p, c, world, updateWorld, i, workerHeight, turn, &aliveCells, &wg)
 			}
 
 			wg.Wait() //wait till all goroutines is done (wg == 0)
+			elapsed := time.Since(start)
+			fmt.Printf("time : %s, turn : %d @ C=%d\n", elapsed, turn, p.Threads)
 			turn = t + 1
 			c.events <- TurnComplete{turn}
+
 			//update the 2D world slice
 			tmp := world
 			world = updateWorld
 			updateWorld = tmp
+			//wg.Wait()
 		}
-	} else {
-		updateWorld = world
 	}
 
 	//after all turn complete, output world as pgm file
