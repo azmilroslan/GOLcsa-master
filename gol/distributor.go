@@ -19,7 +19,7 @@ type distributorChannels struct {
 }
 
 //GOL Logic
-func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread, workerHeight, turn int, aliveCells *[]util.Cell, waitGroup *sync.WaitGroup) {
+func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread, workerHeight, turn int, waitGroup *sync.WaitGroup) {
 
 	yBound := (thread + 1) * workerHeight
 	extra := p.ImageHeight % p.Threads
@@ -62,22 +62,10 @@ func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread,
 
 			if (world[y][x] == 0xFF && count == 2) || (world[y][x] == 0xFF && count == 3) {
 				emptyWorld[y][x] = 0xFF
-				c.events <- CellFlipped{
-					CompletedTurns: turn,
-					Cell:           util.Cell{X: x, Y: y},
-				}
 			} else if world[y][x] == 0xFF && count < 2 {
 				emptyWorld[y][x] = 0
-				c.events <- CellFlipped{
-					CompletedTurns: turn,
-					Cell:           util.Cell{X: x, Y: y},
-				}
 			} else if world[y][x] == 0xFF && count > 3 {
 				emptyWorld[y][x] = 0
-				c.events <- CellFlipped{
-					CompletedTurns: turn,
-					Cell:           util.Cell{X: x, Y: y},
-				}
 			} else if count == 3 {
 				emptyWorld[y][x] = 0xFF
 			} else {
@@ -85,10 +73,6 @@ func worker(p Params, c distributorChannels, world, emptyWorld [][]byte, thread,
 			}
 		}
 	}
-
-	//time.Sleep(5 * time.Millisecond)
-	//wl14928
-
 	waitGroup.Done() //-1 in the wait group
 }
 
@@ -126,6 +110,19 @@ func createSlice(p Params, height int) [][]byte {
 	return newSlice
 }
 
+func visualiseImage(p Params, c distributorChannels, world [][]byte, turn int) {
+	for y := 0; y < p.ImageWidth; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			if world[y][x] == 0xFF {
+				c.events <- CellFlipped{
+					CompletedTurns: turn,
+					Cell:           util.Cell{X: x, Y: y},
+				}
+			}
+		}
+	}
+}
+
 //helper function to det. thread dimensions
 //Since the image HxW are power of two's, it can only be split
 //perfectly if the number of threads are power of two's
@@ -135,7 +132,7 @@ func isPowOfTwo(n int) bool {
 		return false
 	} else {
 		for n != 0 {
-			if n%2 != 1 {
+			if n%2 != 0 {
 				return false
 			}
 			n = n / 2
@@ -178,23 +175,25 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 
 			//SDL logic
 			select {
-			case k := <-keyChan: //this bit will take en the key presses and do what it's supposed to do
+			case k := <-keyChan: //this bit will take in the key presses and do what it's supposed to do
 				if k == 's' {
 					outputFileToPGM(p, c, world, turn)
 				} else if k == 'q' {
 					outputFileToPGM(p, c, world, turn)
+					c.events <- StateChange{turn, Quitting}
 					return
 				} else if k == 'p' {
 					fmt.Printf("Current turn : %d \n", turn)
+					c.events <- StateChange{turn, Paused}
 					for {
 						kp := <-keyChan
 						if kp == 'p' {
 							fmt.Println("Continuing....")
+							c.events <- StateChange{turn, Executing}
 							break
 						}
 					}
 				}
-
 			//AliveCell logic
 			case <-ticker.C: //this bit will update AliveCellCount every 2 seconds
 				alive := 0
@@ -208,25 +207,25 @@ func distributor(p Params, c distributorChannels, keyChan <-chan rune) {
 				break
 			}
 
+			//visualize
+			visualiseImage(p, c, world, turn)
 			//BASELINE GOL LOGIC
 			var wg = sync.WaitGroup{} //used to make sure all goroutines have done executing before resuming
-			start := time.Now()
+			//start := time.Now()
 			for i := 0; i < p.Threads; i++ { //for each thread make the worker work??
 				wg.Add(1) //add number of threads the wait group needs to wait
-				go worker(p, c, world, updateWorld, i, workerHeight, turn, &aliveCells, &wg)
+				go worker(p, c, world, updateWorld, i, workerHeight, turn, &wg)
 			}
 
 			wg.Wait() //wait till all goroutines is done (wg == 0)
-			elapsed := time.Since(start)
-			fmt.Printf("time : %s, turn : %d @ C=%d\n", elapsed, turn, p.Threads)
+			//elapsed := time.Since(start)
+			//fmt.Printf("time : %s, turn : %d @ C=%d\n", elapsed, turn, p.Threads)
 			turn = t + 1
 			c.events <- TurnComplete{turn}
-
 			//update the 2D world slice
 			tmp := world
 			world = updateWorld
 			updateWorld = tmp
-			//wg.Wait()
 		}
 	}
 
